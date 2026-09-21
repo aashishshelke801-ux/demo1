@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Emergency Response Coordination</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+    <header>
+        <div class="header-left"><button id="flowNav" class="flow-nav" onclick="goBack()">⌂ Home</button><a
+                class="brand" onclick="show('landing')">✚ SIH <span>Emergency Response</span></a></div>
+        <nav><button onclick="show('patient')">Patient</button><button onclick="show('driver')">Driver</button><button
+                onclick="show('coordinator')">Coordinator</button><button class="demo" onclick="resetDemo()">↻ Reset
+                Demo</button></nav>
+    </header>
+    <main>
+        <section id="landing" class="page active hero">
+            <div class="eyebrow">● DEMO MODE · SIMULATED DATA</div>
+            <h1>Ambulance Emergency<br><em>Response & Coordination</em> System</h1>
+            <p>Faster dispatch. Smarter coordination. Better emergency response.</p>
+            <div class="roles"><button onclick="show('registration')">🚑<b>Register Ambulance</b><small>Onboard a
+                        verified driver</small></button><button onclick="show('patient')">🆘<b>Patient
+                        Emergency</b><small>Request emergency assistance</small></button><button
+                    onclick="show('driver')">👨‍⚕️<b>Ambulance Driver</b><small>Manage assigned
+                        cases</small></button><button onclick="show('coordinator')">◉<b>Coordinator</b><small>Coordinate
+                        live operations</small></button></div>
+            <p class="disclaimer">Prototype for demonstration purposes. Not connected to real 108/112 emergency
+                infrastructure.</p>
+        </section>
+        <section id="registration" class="page">
+            <div class="panel form">
+                <h2>Ambulance Registration</h2>
+                <p>Registration is held for coordinator verification before dispatch access.</p>
+                <form id="regForm">
+                    <div class="grid"><input name="name" placeholder="Driver Full Name" required><input name="phone"
+                            placeholder="Mobile Number" required><input name="email" type="email" placeholder="Email"
+                            required><input name="password" type="password" placeholder="Password" required><input
+                            name="registration_number" placeholder="Ambulance Registration Number" required><select
+                            name="ambulance_type">
+                            <option>Basic Life Support</option>
+                            <option>Advanced Life Support</option>
+                            <option>Patient Transport</option>
+                        </select><input name="vehicle_model" placeholder="Vehicle Model" required><input
+                            name="license_number" placeholder="Driver ID / License Number" required></div><button
+                        class="primary">Register Ambulance</button>
+                </form>
+                <div id="regMessage"></div>
+            </div>
+        </section>
+        <section id="patient" class="page">
+            <div class="patient-layout">
+                <div class="panel sos">
+                    <div class="eyebrow">EMERGENCY ASSISTANCE</div>
+                    <h2>Need an ambulance?</h2>
+                    <form id="sosForm"><label>Emergency type</label><select name="emergency_type">
+                            <option>Accident</option>
+                            <option>Medical Emergency</option>
+                            <option>Pregnancy</option>
+                            <option>Other</option>
+                        </select><label>Priority</label><select name="priority">
+                            <option>HIGH</option>
+                            <option>CRITICAL</option>
+                            <option>MEDIUM</option>
+                            <option>LOW</option>
+                        </select><input name="name" placeholder="Patient name (optional)"><input name="phone"
+                            placeholder="Phone number (optional)"><textarea name="notes"
+                            placeholder="Additional notes (optional)"></textarea>
+                        <div class="location">⌖ <span id="locText">Demo location ready · Pune, Maharashtra</span><button
+                                type="button" onclick="locate()">Use GPS</button><button type="button"
+                                onclick="useDemoLocation()">Use Demo Location</button></div><button class="sos-btn">SOS
+                            – REQUEST AMBULANCE</button>
+                    </form>
+                </div>
+                <div class="panel case">
+                    <h3>Emergency status</h3>
+                    <div id="patientCase" class="empty">No active emergency. Use the SOS button to begin the demo.</div>
+                    <div id="patientMap" class="map small"></div>
+                </div>
+            </div>
+        </section>
+        <section id="driver" class="page">
+            <div class="panel login" id="driverLogin">
+                <h2>Ambulance Driver Portal</h2>
+                <p>Use demo driver: <code>rahul@demo.in</code> / <code>driver123</code></p>
+                <form onsubmit="login(event,'DRIVER')"><input name="email" type="email" placeholder="Driver email"
+                        required><input name="password" type="password" placeholder="Password" required><button
+                        class="primary">Login</button></form>
+            </div>
+            <div id="driverPanel" hidden>
+                <div class="driver-head">
+                    <div>
+                        <div class="eyebrow">VERIFIED DRIVER</div>
+                        <h2 id="driverName"></h2>
+                        <p id="driverDetails"></p>
+                    </div><button id="onlineBtn" class="status-btn" onclick="toggleOnline()">OFFLINE</button>
+                </div>
+                <div id="driverCase" class="panel empty">Go online to receive emergency dispatches.</div>
+            </div>
+        </section>
+        <section id="coordinator" class="page">
+            <div class="panel login" id="coordLogin">
+                <h2>Emergency Response Coordinator</h2>
+                <p>Use demo credentials: <code>coordinator@demo.in</code> / <code>coord123</code></p>
+                <form onsubmit="login(event,'COORDINATOR')"><input name="email" type="email"
+                        placeholder="Coordinator email" required><input name="password" type="password"
+                        placeholder="Password" required><button class="primary">Open Dashboard</button></form>
+            </div>
+            <div id="coordPanel" hidden>
+                <div class="dash-title">
+                    <div>
+                        <div class="eyebrow">● LIVE OPERATIONS · DEMO MODE</div>
+                        <h2>Emergency Response Coordinator</h2>
+                    </div><button class="ghost" onclick="loadDashboard()">Refresh data</button>
+                </div>
+                <div id="stats" class="stats"></div>
+                <div class="dash-grid">
+                    <div class="panel">
+                        <h3>Live Map <small>Live Tracking – Demo Mode</small></h3>
+                        <div id="coordMap" class="map"></div>
+                    </div>
+                    <div class="panel">
+                        <h3>Hospital pre-alert</h3>
+                        <div id="alerts" class="empty">No incoming patient alerts.</div>
+                        <h3>Pending registrations</h3>
+                        <div id="pending" class="list empty">No pending registrations.</div>
+                    </div>
+                </div>
+                <div class="panel">
+                    <h3>Active emergency cases</h3>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Case ID</th>
+                                    <th>Emergency</th>
+                                    <th>Priority</th>
+                                    <th>Ambulance / Driver</th>
+                                    <th>ETA</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cases"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="panel history-panel">
+                    <div class="history-heading">
+                        <div>
+                            <div class="eyebrow">ARCHIVE & AUDIT</div>
+                            <h3>History Management</h3>
+                        </div><button class="danger-outline" onclick="confirmClearHistory()">Clear History</button>
+                    </div>
+                    <div class="history-tools"><input id="historySearch"
+                            placeholder="Search patient, ambulance, driver or emergency"
+                            oninput="queueHistoryLoad()"><select id="historyStatus" onchange="loadHistory()">
+                            <option value="ALL">All history</option>
+                            <option value="COMPLETED">Completed</option>
+                            <option value="CANCELLED">Cancelled</option>
+                        </select><button id="bulkDelete" class="danger-outline" onclick="confirmBulkDelete()"
+                            disabled>Delete selected</button></div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th><input id="historySelectAll" type="checkbox"
+                                            onchange="toggleAllHistory(this.checked)"></th>
+                                    <th>Patient / Request</th>
+                                    <th>Ambulance / Driver</th>
+                                    <th>Hospital</th>
+                                    <th>Requested</th>
+                                    <th>Response</th>
+                                    <th>Status</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyCases"></tbody>
+                        </table>
+                    </div>
+                    <div id="historyEmpty" class="empty">No completed or cancelled emergency records.</div>
+                </div>
+                <div class="panel future">
+                    <h3>Future integration</h3><span>108/112 integration</span><span>Verified ambulance
+                        feeds</span><span>Hospital integration</span><span>Real traffic APIs</span><span>District/state
+                        deployment</span><span>Advanced analytics</span>
+                </div>
+            </div>
+        </section>
+    </main>
+    <div id="toast"></div>
+    <div id="confirmModal" class="modal" hidden>
+        <div class="modal-card">
+            <div class="eyebrow">CONFIRM DELETION</div>
+            <h3 id="confirmTitle">Delete history record?</h3>
+            <p id="confirmText">Are you sure you want to permanently delete this record?</p>
+            <div class="modal-actions"><button onclick="closeConfirm()">Cancel</button><button id="confirmDelete"
+                    class="danger">Delete</button></div>
+        </div>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+
+</html>
