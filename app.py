@@ -3,14 +3,50 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3, math, os
 from datetime import datetime
 
-BASE = os.path.dirname(__file__)
-DB = os.path.join(BASE, 'database', 'emergency.db')
+BASE = os.path.abspath(os.path.dirname(__file__))
+
+def get_db_path():
+    """
+    Determine the SQLite database path:
+    - Explicit override via DB_PATH environment variable if set.
+    - If running in Vercel/serverless/read-only environment, use /tmp/emergency.db (writable).
+    - Otherwise, default to local project directory: BASE/database/emergency.db.
+    """
+    if os.environ.get('DB_PATH'):
+        return os.environ['DB_PATH']
+
+    # Detect Vercel and AWS Lambda serverless read-only environments
+    is_serverless = bool(
+        os.environ.get('VERCEL') == '1' or
+        os.environ.get('VERCEL') or
+        os.environ.get('AWS_LAMBDA_FUNCTION_NAME') or
+        BASE.startswith('/var/task')
+    )
+    if is_serverless:
+        return '/tmp/emergency.db'
+
+    # Check write access to local directory for local development
+    local_dir = os.path.join(BASE, 'database')
+    try:
+        os.makedirs(local_dir, exist_ok=True)
+        test_file = os.path.join(local_dir, '.write_test')
+        with open(test_file, 'w') as f:
+            f.write('1')
+        os.remove(test_file)
+        return os.path.join(local_dir, 'emergency.db')
+    except (OSError, IOError, PermissionError):
+        import tempfile
+        return os.path.join(tempfile.gettempdir(), 'emergency.db')
+
+DB = get_db_path()
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sih-demo-only-change-me')
 
 def now(): return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def conn():
-    c = sqlite3.connect(DB); c.row_factory = sqlite3.Row; return c
+    c = sqlite3.connect(DB, timeout=20.0, check_same_thread=False)
+    c.row_factory = sqlite3.Row
+    return c
 def rows(q, args=()):
     c=conn(); r=[dict(x) for x in c.execute(q,args).fetchall()]; c.close(); return r
 def row(q,args=()):
@@ -39,14 +75,35 @@ CREATE TABLE IF NOT EXISTS emergency_requests(id INTEGER PRIMARY KEY,patient_id 
 CREATE TABLE IF NOT EXISTS tracking_events(id INTEGER PRIMARY KEY,emergency_id INTEGER,ambulance_id INTEGER,latitude REAL,longitude REAL,status TEXT,timestamp TEXT);
 CREATE TABLE IF NOT EXISTS hospital_alerts(id INTEGER PRIMARY KEY,emergency_id INTEGER,hospital_name TEXT,eta TEXT,status TEXT,created_at TEXT);
 '''
+_db_initialized = False
+
 def init_db():
-    os.makedirs(os.path.dirname(DB),exist_ok=True); c=conn(); c.executescript(SCHEMA)
-    columns={x['name'] for x in c.execute('pragma table_info(emergency_requests)').fetchall()}
+    global DB, _db_initialized
+    DB = get_db_path()
+    db_dir = os.path.dirname(DB)
+    if db_dir:
+        try:
+            os.makedirs(db_dir, exist_ok=True)
+        except OSError:
+            pass
+    c = conn()
+    c.executescript(SCHEMA)
+    columns = {x['name'] for x in c.execute('pragma table_info(emergency_requests)').fetchall()}
     for name, definition in [('patient_name','text'),('assigned_at','text'),('patient_count','integer default 1'),('incident_id','text'),('severity','text'),('traffic_level','text'),('hospital_status','text')]:
         if name not in columns: c.execute(f'alter table emergency_requests add column {name} {definition}')
     c.execute('create unique index if not exists one_active_sos_per_patient on emergency_requests(patient_id) where status not in ("COMPLETED","CANCELLED")')
-    c.commit(); c.close()
-    if not row('select id from users where email=?',('coordinator@demo.in',)): reset_demo()
+    c.commit()
+    c.close()
+    if not row('select id from users where email=?',('coordinator@demo.in',)):
+        reset_demo()
+    _db_initialized = True
+
+@app.before_request
+def ensure_db():
+    global _db_initialized
+    if not _db_initialized or not os.path.exists(DB):
+        init_db()
+
 def add_user(name,phone,email,password,role): return execute('insert into users(name,phone,email,password_hash,role,created_at) values(?,?,?,?,?,?)',(name,phone,email,generate_password_hash(password),role,now()))
 def reset_demo():
     c=conn(); c.executescript('DELETE FROM hospital_alerts;DELETE FROM tracking_events;DELETE FROM emergency_requests;DELETE FROM ambulances;DELETE FROM drivers;DELETE FROM users;'); c.commit(); c.close()
@@ -248,4 +305,8 @@ def reset():
 if __name__=='__main__':
     init_db()
     app.run(port=int(os.environ.get('PORT', 5000)), debug=os.environ.get('FLASK_DEBUG') == '1')
-else: init_db()
+else:
+    try:
+        init_db()
+    except Exception as e:
+        app.logger.warning(f"Initial DB bootstrap warning: {e}")
