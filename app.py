@@ -42,6 +42,24 @@ DB = get_db_path()
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'sih-demo-only-change-me')
 
+class PrefixMiddleware(object):
+    """Normalize PATH_INFO if a serverless proxy or rewrite prepends /app.py or /api/index"""
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        path = environ.get('PATH_INFO', '')
+        for prefix in ('/app.py', '/api/index.py', '/api/index'):
+            if path == prefix:
+                environ['PATH_INFO'] = '/'
+                break
+            elif path.startswith(prefix + '/'):
+                environ['PATH_INFO'] = path[len(prefix):]
+                break
+        return self.wsgi_app(environ, start_response)
+
+app.wsgi_app = PrefixMiddleware(app.wsgi_app)
+
 def now(): return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 def conn():
     c = sqlite3.connect(DB, timeout=20.0, check_same_thread=False)
@@ -114,6 +132,7 @@ def reset_demo():
         uid=add_user(n,p,e,'driver123','DRIVER'); did=execute('insert into drivers(user_id,license_number,verification_status) values(?,?,?)',(uid,'MH-DL-'+str(uid)+'-2026','VERIFIED')); execute('insert into ambulances(driver_id,registration_number,ambulance_type,vehicle_model,status,latitude,longitude,created_at) values(?,?,?,?,?,?,?,?)',(did,reg,typ,model,status,lat,lng,now()))
 
 @app.get('/')
+@app.get('/app.py')
 def home(): return render_template('index.html')
 @app.post('/api/register')
 def register():
